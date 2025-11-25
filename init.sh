@@ -89,3 +89,7 @@ echo " Caddy config at:"
 echo "   sudo nano /etc/caddy/Caddyfile"
 echo
 echo " Restart Caddy after editing:"
+
+echo " git add . "
+echo " git commit -m "message" "
+echo " git push -u origin main "
