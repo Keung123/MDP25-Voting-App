@@ -1,0 +1,32 @@
+mdpvote.click {
+    encode gzip
+
+    # 根路径你自己要不要用，先保留
+    root * /usr/share/caddy
+    file_server
+
+    # /vote25
+    handle_path /vote25* {
+        root * /var/www/vote25
+        try_files {path} /index.html
+        file_server
+    }
+
+    # /admin25
+    handle_path /admin25* {
+        root * /var/www/admin25
+        try_files {path} /index.html
+        file_server
+    }
+
+    # /votetest
+    handle_path /votetest* {
+        root * /var/www/votetest
+        try_files {path} /index.html
+        file_server
+    }
+
+    # /api25
+    @api25 path /api25/*
+    reverse_proxy @api25 127.0.0.1:4000
+}
