@@ -15,7 +15,7 @@ import proPic6 from './assets/singers/s6.webp';
 // 导入海报
 import pCurrent from './assets/p25.png'
 const posters = import.meta.glob('/src/assets/posters/*.{png,jpg,jpeg,webp}', {
-    eager: true
+  eager: true
 });
 
 // --- 模拟数据配置 ---
@@ -28,11 +28,11 @@ const posters = import.meta.glob('/src/assets/posters/*.{png,jpg,jpeg,webp}', {
 // }));
 
 const PAST_POSTERS = Object.keys(posters)
-    .sort() // 按文件名排序
-    .map((path, index) => ({
-        id: index + 1,
-        src: posters[path].default
-    }));
+  .sort() // 按文件名排序
+  .map((path, index) => ({
+    id: index + 1,
+    src: posters[path].default
+  }));
 
 // 本期主海报
 const MAIN_POSTER = {
@@ -112,8 +112,11 @@ const SINGERS = [
   },
 ];
 
-const TOTAL_VOTES = 10;
+
+// 默认票数，真正票数以后端 /api25/config 为准
+const DEFAULT_TOTAL_VOTES = 10;
 const STORAGE_KEY = 'music_contest_2025_v1';
+const DEVICE_KEY = 'music_contest_2025_device_id';
 
 // 注入自定义样式 (动画与特效)
 const customStyles = `
@@ -210,6 +213,21 @@ const FireParticles = ({ particles, onComplete }) => {
   );
 };
 
+// 生成或读取 deviceId
+const getOrCreateDeviceId = () => {
+  if (typeof window === 'undefined') return null;
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    if (window.crypto && window.crypto.randomUUID) {
+      id = window.crypto.randomUUID();
+    } else {
+      id = 'dev_' + Math.random().toString(36).slice(2);
+    }
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+};
+
 // --- 主应用组件 ---
 export default function App() {
   const [view, setView] = useState('loading'); // loading, intro, main
@@ -218,6 +236,16 @@ export default function App() {
   // 投票状态
   const [votes, setVotes] = useState({}); // { singerId: count }
   const [bestSongId, setBestSongId] = useState(null);
+
+  // 后端配置
+  const [config, setConfig] = useState({
+    votingEnabled: false,
+    totalVotes: DEFAULT_TOTAL_VOTES,
+  });
+
+  const [deviceId, setDeviceId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [configError, setConfigError] = useState('');
 
   // 交互状态
   const [particles, setParticles] = useState([]);
@@ -233,22 +261,48 @@ export default function App() {
       setBestSongId(parsed.bestSongId || null);
     }
 
+    const id = getOrCreateDeviceId();
+    setDeviceId(id);
+
+    // 初次拉 config
+    fetchConfig();
+
+    // 定时轮询 config，比如每 15 秒
+    const timer = setInterval(fetchConfig, 15000);
+
     // 模拟资源预加载后进入开场
     setTimeout(() => {
       setView('intro');
     }, 500);
+
+    return () => clearInterval(timer);
   }, []);
 
-  // 持久化保存
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api25/config');
+      const data = await res.json();
+      setConfig({
+        votingEnabled: !!data.votingEnabled,
+        totalVotes: data.totalVotesPerDevice || DEFAULT_TOTAL_VOTES,
+      });
+      setConfigError('');
+    } catch (e) {
+      console.error(e);
+      setConfigError('无法连接后台，使用本地票数设置');
+    }
+  };
+
+  // 持久化保存到 localStorage（只是给用户体验，不算真正提交）
   useEffect(() => {
-    if (view === 'main') {
+    if (view === 'main' && deviceId) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         votes,
         bestSongId,
-        deviceId: 'simulated_device_id_' + Math.random() // 简单模拟
+        deviceId,
       }));
     }
-  }, [votes, bestSongId, view]);
+  }, [votes, bestSongId, view, deviceId]);
 
   // --- 动画逻辑 ---
   useEffect(() => {
@@ -261,14 +315,14 @@ export default function App() {
         if (count < maxImages) {
           setPosterIndex(count);
           // 随着播放张数增加，间隔越来越短（加速），最后一张停留
-          const delay = Math.max(50, 400 - count * 12);
+          const delay = Math.max(50, 380 - count * 13);
           count++;
           setTimeout(playSequence, delay);
         } else {
           // 播放完毕，显示主海报
           setPosterIndex('current');
           // 停留 2.5 秒后进入主界面
-          setTimeout(() => setView('main'), 4000);
+          setTimeout(() => setView('main'), 4200);
         }
       };
       playSequence();
@@ -278,32 +332,34 @@ export default function App() {
   // --- 交互逻辑 ---
 
   const getUsedVotes = () => Object.values(votes).reduce((a, b) => a + b, 0);
-  const remainingVotes = TOTAL_VOTES - getUsedVotes();
-  const remainingPercent = (remainingVotes / TOTAL_VOTES) * 100;
+  const totalVotesAllowed = config.totalVotes || DEFAULT_TOTAL_VOTES;
+  const remainingVotes = totalVotesAllowed - getUsedVotes();
 
   const handleVote = (singerId, e) => {
-    if (remainingVotes <= 0) {
-      triggerToast("票数已用完！调整一下其他的吧～");
+    if (!config.votingEnabled) {
+      triggerToast("后台还没开启投票，请等主持人提示～");
       return;
     }
 
-    // 触觉反馈 (如果设备支持)
+    if (remainingVotes <= 0) {
+      triggerToast("票数已用完！可以先减掉别的歌手再分配～");
+      return;
+    }
+
     if (navigator.vibrate) navigator.vibrate(15);
 
-    // 添加粒子效果
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left; // 相对按钮的位置
+    const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
     const newParticle = {
       id: Date.now() + Math.random(),
-      x: x + (Math.random() * 20 - 10), // 随机偏移
+      x: x + (Math.random() * 20 - 10),
       y: y - 20,
       type: Math.random() > 0.5 ? 'fire' : 'text'
     };
     setParticles(prev => [...prev, newParticle]);
 
-    // 更新票数
     setVotes(prev => ({
       ...prev,
       [singerId]: (prev[singerId] || 0) + 1
@@ -311,6 +367,10 @@ export default function App() {
   };
 
   const handleDecreaseVote = (singerId) => {
+    if (!config.votingEnabled) {
+      triggerToast("投票未开启，无法调整～");
+      return;
+    }
     if (!votes[singerId] || votes[singerId] <= 0) return;
     if (navigator.vibrate) navigator.vibrate(10);
     setVotes(prev => ({
@@ -320,9 +380,13 @@ export default function App() {
   };
 
   const handleSelectSong = (songId) => {
+    if (!config.votingEnabled) {
+      triggerToast("投票未开启，无法选择年度歌曲～");
+      return;
+    }
     if (navigator.vibrate) navigator.vibrate(10);
     if (bestSongId === songId) {
-      setBestSongId(null); // 取消选择
+      setBestSongId(null);
     } else {
       setBestSongId(songId);
     }
@@ -336,6 +400,52 @@ export default function App() {
     setToastMsg(msg);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2000);
+  };
+
+  const handleSubmit = async () => {
+    if (!config.votingEnabled) {
+      triggerToast("投票未开启");
+      return;
+    }
+    if (remainingVotes !== 0 || !bestSongId) {
+      triggerToast("请分配完全部票数，并选择一首年度歌曲");
+      return;
+    }
+    if (!deviceId) {
+      triggerToast("设备标识初始化失败，请刷新页面重试");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await fetch('/api25/vote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          deviceId,
+          singerVotes: votes,
+          bestSongId,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (data.code === 'VOTING_CLOSED') {
+          triggerToast("投票未开启");
+        } else {
+          triggerToast(data.message || "提交失败，请稍后再试");
+        }
+        return;
+      }
+      triggerToast("投票提交成功！感谢参与！");
+      // 这里可以视情况禁用再提交（比如设置一个已提交标记）
+    } catch (err) {
+      console.error(err);
+      triggerToast("网络出错，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // --- 渲染部分 ---
@@ -409,11 +519,11 @@ transition-all">
 
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
-                    <img
-                      src={logo}
-                      alt="logo"
-                      className="h-14 w-auto object-contain "
-                    />
+                  <img
+                    src={logo}
+                    alt="logo"
+                    className="h-14 w-auto object-contain "
+                  />
                   <span className="pl-2 italic font-bold text-s text-gray-300">2025 年度派对</span>
                 </div>
                 <div className={`flex flex-col items-end ${remainingVotes === 0 ? 'text-gray-500' : 'text-yellow-400'}`}>
@@ -425,9 +535,21 @@ transition-all">
               <div className="w-full backdrop-blur-2xl bg-gray-800 h-1.5 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-purple-500 to-pink-500 progress-bar-fill"
-                  style={{ width: `${remainingPercent}%` }}
+                  style={{ width: `${(getUsedVotes() / totalVotesAllowed) * 100}%` }}
                 ></div>
               </div>
+
+              {configError && (
+                <div className="mt-2 text-xs text-yellow-400">
+                  {configError}
+                </div>
+              )}
+              {!config.votingEnabled && (
+                <div className="mt-2 text-xs text-orange-400">
+                  后台暂未开启投票，请等待主持人提示。
+                </div>
+              )}
+
             </div>
 
             {/* 歌手列表区域 */}
@@ -477,11 +599,15 @@ transition-all">
 
                           <button
                             onClick={(e) => handleVote(singer.id, e)}
-                            className={`w-12 h-10 rounded-lg flex items-center justify-center transition-all relative overflow-hidden ${isMax ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : `bg-gradient-to-r ${singer.color} text-white shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 active:brightness-110`}`}
-                            disabled={isMax}
+                            className={`w-12 h-10 rounded-lg flex items-center justify-center transition-all relative overflow-hidden ${isMax || !config.votingEnabled
+                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                              : `bg-gradient-to-r ${singer.color} text-white shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 active:brightness-110`
+                              }`}
+                            disabled={isMax || !config.votingEnabled}
                           >
+
                             <div className="relative z-10 flex items-center gap-1">
-                              <Flame size={16} fill={isMax ? "none" : "currentColor"} />
+                              <Flame size={16} fill={isMax || !config.votingEnabled ? "none" : "currentColor"} />
                               <span className="text-sm font-bold">+1</span>
                             </div>
 
@@ -494,11 +620,13 @@ transition-all">
 
                     {/* 歌曲选择区 (最佳歌曲) */}
                     <div className="mt-5 pt-4 border-t border-white/5">
+
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xs text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1">
                           <Trophy size={12} className="text-yellow-500" /> 全场最佳歌曲 (仅选1首)
                         </span>
                       </div>
+
                       <div className="grid grid-cols-1 gap-2">
                         {singer.songs.map(song => {
                           const isSelected = bestSongId === song.id;
@@ -507,8 +635,8 @@ transition-all">
                               key={song.id}
                               onClick={() => handleSelectSong(song.id)}
                               className={`relative w-full text-left px-3 py-3 rounded-lg text-sm font-medium transition-all duration-300 border ${isSelected
-                                  ? 'active-song-gradient text-white border-transparent shadow-lg transform scale-[1.02]'
-                                  : 'bg-[#25252e] text-gray-400 border-transparent hover:bg-[#2d2d38]'
+                                ? 'active-song-gradient text-white border-transparent shadow-lg transform scale-[1.02]'
+                                : 'bg-[#25252e] text-gray-400 border-transparent hover:bg-[#2d2d38]'
                                 }`}
                             >
                               <div className="flex items-center justify-between relative z-10">
@@ -538,22 +666,18 @@ transition-all">
                     )}
                   </div>
                 </div>
+
                 <button
-                  className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${(remainingVotes === 0 && bestSongId)
+                  className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${(remainingVotes === 0 && bestSongId && config.votingEnabled)
                       ? 'bg-white text-black hover:bg-gray-200'
                       : 'bg-gray-800 text-gray-500'
                     }`}
-                  onClick={() => {
-                    if (remainingVotes === 0 && bestSongId) {
-                      triggerToast("投票提交成功！感谢参与！");
-                      console.log("提交数据:", { votes, bestSongId });
-                    } else {
-                      triggerToast("请用完10票并选择1首最佳歌曲");
-                    }
-                  }}
+                  onClick={handleSubmit}
+                  disabled={submitting || !config.votingEnabled}
                 >
-                  提交
+                  {submitting ? "提交中..." : "提交"}
                 </button>
+
               </div>
             </div>
 
