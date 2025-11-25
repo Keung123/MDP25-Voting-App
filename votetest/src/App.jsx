@@ -12,13 +12,13 @@ export default function App() {
           alt="Logo"
         />
 
-        <h1 className="title">投票系统测试页</h1>
+        <h1 className="title">服务器测试页</h1>
 
         <div className="btn-group">
           <a href="/vote25" className="btn">
             投票页面
           </a>
-          <a href="/api25" className="btn secondary">
+          <a href="/admin25" className="btn secondary">
             后端
           </a>
         </div>
