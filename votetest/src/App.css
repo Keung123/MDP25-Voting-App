@@ -1,0 +1,65 @@
+/* 全屏容器 */
+.container {
+  width: 100vw;
+  height: 100vh;
+  background: #f7f8fa;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+}
+
+/* 内容卡片（可选） */
+.card {
+  text-align: center;
+}
+
+/* 自适应 Logo */
+.logo {
+  width: min(380px, 70vw);
+  height: auto;
+  margin-bottom: 24px;
+}
+
+
+/* 标题 */
+.title {
+  font-size: clamp(20px, 4vw, 32px);
+  font-weight: 600;
+  margin-bottom: 32px;
+  color: #222;
+}
+
+/* 按钮组 */
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+/* 按钮 */
+.btn {
+  padding: 12px 24px;
+  font-size: 16px;
+  border-radius: 12px;
+  background: #4c6ef5;
+  color: white;
+  text-decoration: none;
+  width: 200px;
+  text-align: center;
+  transition: 0.2s;
+}
+
+.btn:hover {
+  background: #3b5bdb;
+}
+
+/* 次级按钮 */
+.btn.secondary {
+  background: #adb5bd;
+}
+
+.btn.secondary:hover {
+  background: #868e96;
+}
