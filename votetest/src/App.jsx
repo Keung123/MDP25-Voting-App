@@ -1,12 +1,13 @@
 import React from "react";
 import "./App.css";
+import logo from './assets/logo.png';
 
 export default function App() {
   return (
     <div className="container">
       <div className="card">
         <img
-          src="./logo.png"
+          src={logo}
           className="logo"
           alt="Logo"
         />

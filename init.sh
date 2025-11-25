@@ -89,4 +89,3 @@ echo " Caddy config at:"
 echo "   sudo nano /etc/caddy/Caddyfile"
 echo
 echo " Restart Caddy after editing:"
-ec
